@@ -30,7 +30,7 @@ func (r *Client) processModel() {
 	r.AlwaysFetch = true
 	types := make(map[string]*map[string]interface{})
 
-	if rSubscription, err := r.get(1, "subscription"); err == nil {
+	if rSubscription, err := r.getRaw(1, "subscription"); err == nil {
 		fmt.Println(PrettyJSON(rSubscription))
 		if Subscription, ok := GetMap("Subscription", rSubscription); ok {
 			types["Subscription"] = &Subscription
@@ -207,7 +207,7 @@ func (r *Client) processModelQuery(types map[string]*map[string]interface{}, url
 		}
 	}
 
-	if raw, err := r.get(1, url); err == nil {
+	if raw, err := r.getRaw(1, url); err == nil {
 		if QueryResult, ok := GetMap("QueryResult", raw); !ok {
 			Type := firstKey(raw)
 			if Result, ok := GetMap(Type, raw); ok {

@@ -113,15 +113,16 @@ type Client struct {
 	Workspace     string
 	Workspaces    map[string]string
 	AlwaysFetch   bool
+	LogRequests   bool
 }
 
 //PaginatedGet get all results
-func (r *Client) PaginatedGet(start float64, path string) (map[string]interface{}, error) {
+func (r *Client) PaginatedGet(start float64, path string) (*QueryResult, error) {
 	return r.paginatedGet(start, -1, path, nil)
 }
 
 //RawGet run a custom query (any string)
-func (r *Client) RawGet(raw string) (body map[string]interface{}, err error) {
+func (r *Client) RawGet(raw string) (*QueryResult, error) {
 	return r.PaginatedGet(1, raw)
 }
 
@@ -184,24 +185,16 @@ func (r *Client) Login(username, password string) error {
 
 //InitWorkspaces initialize all workspaces available to the user
 func (r *Client) InitWorkspaces() {
-	if raw, err := r.PaginatedGet(1, "subscription?fetch=true&query="); err == nil {
-		if QueryResult, ok := GetMap("QueryResult", raw); ok {
-			if Results, ok := GetArray("Results", QueryResult); ok && len(Results) == 1 {
-				if rWorkspaces, ok := GetMap("Workspaces", Results[0].(map[string]interface{})); ok {
-					if Workspaces, err := r.PaginatedGet(1, rWorkspaces["_ref"].(string)+"?fetch=true"); err == nil {
-						if QueryResult, ok := GetMap("QueryResult", Workspaces); ok {
-							if Results, ok := GetArray("Results", QueryResult); ok && len(Results) != 0 {
-								r.Workspaces = make(map[string]string)
-								for _, result := range Results {
-									if result, ok := result.(map[string]interface{}); ok {
-										if r.Workspace == "" {
-											r.Workspace = result["_ref"].(string)
-										}
-										r.Workspaces[result["Name"].(string)] = result["_ref"].(string)
-									}
-								}
-							}
+	if result, err := r.PaginatedGet(1, "subscription?fetch=true&query="); err == nil && len(result.Results) > 0 {
+		if rWorkspaces, ok := GetMap("Workspaces", result.Results[0].(map[string]interface{})); ok {
+			if workspaces, err := r.PaginatedGet(1, rWorkspaces["_ref"].(string)+"?fetch=true"); err == nil && len(workspaces.Results) > 0 {
+				r.Workspaces = make(map[string]string)
+				for _, result := range workspaces.Results {
+					if result, ok := result.(map[string]interface{}); ok {
+						if r.Workspace == "" {
+							r.Workspace = result["_ref"].(string)
 						}
+						r.Workspaces[result["Name"].(string)] = result["_ref"].(string)
 					}
 				}
 			}

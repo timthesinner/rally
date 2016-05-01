@@ -16,7 +16,10 @@
 package rally
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path"
 	"testing"
 )
 
@@ -25,19 +28,19 @@ func TestRallyLogin(t *testing.T) {
 	if rally, err := NewRally("", ""); err != nil {
 		t.Fatal(err)
 	} else {
-		/*body, err := rally.RawGet("portfolioitem/feature?fetch=true")
-		q, _ := GetMap("QueryResult", body)
-		if results, ok := GetArray("Results", q); ok {
-			fmt.Println(len(results))
-		}
-
-		if f, _ := os.Create(path.Join("./", "Features.json")); err == nil {
-			defer f.Close()
-			if b, err := json.MarshalIndent(body, "", "  "); err == nil {
-				f.Write(b)
-			}
-		}*/
-		//rally.processModel()
 		fmt.Println(rally)
+		rally.LogRequests = true
+		if features, err := rally.RawGet("portfolioitem/feature?fetch=true"); err != nil {
+			t.Fatal(err)
+		} else {
+			fmt.Println(len(features.Results))
+
+			if f, _ := os.Create(path.Join("./", "Features.json")); err == nil {
+				defer f.Close()
+				if b, err := json.MarshalIndent(features, "", "  "); err == nil {
+					f.Write(b)
+				}
+			}
+		}
 	}
 }

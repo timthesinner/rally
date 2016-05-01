@@ -18,13 +18,14 @@ package rally
  */
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 )
 
-func (r *Client) get(start float64, path string) (map[string]interface{}, error) {
+func (r *Client) getRaw(start float64, path string) (raw map[string]interface{}, err error) {
 	sep := "?"
 	if strings.Contains(path, "?") {
 		sep = "&"
@@ -45,26 +46,40 @@ func (r *Client) get(start float64, path string) (map[string]interface{}, error)
 	}
 
 	URI := r.Path(path + sep + fmt.Sprintf("start=%v&count=%v%v%v", start, 20, fetch, workspace))
-	//fmt.Println("GET", URI)
+	if r.LogRequests {
+		fmt.Println("GET", URI)
+	}
 
 	res, err := r.client.Get(URI)
 	if err != nil {
-		return make(map[string]interface{}), err
+		return raw, err
 	}
 
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return make(map[string]interface{}), errors.New(res.Status)
+		return raw, errors.New(res.Status)
 	}
 
-	var parse map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&parse); err != nil {
-		return make(map[string]interface{}), err
-	}
-	return parse, nil
+	err = json.NewDecoder(res.Body).Decode(&raw)
+	return raw, err
 }
 
-func (r *Client) paginatedGet(start, total float64, path string, body map[string]interface{}) (map[string]interface{}, error) {
+func (r *Client) get(start float64, path string) (results *QueryResult, err error) {
+	raw, err := r.getRaw(start, path)
+	if err != nil {
+		return results, err
+	}
+
+	if res, ok := raw["QueryResult"]; ok {
+		var buff bytes.Buffer
+		json.NewEncoder(&buff).Encode(res)
+		err = json.NewDecoder(&buff).Decode(&results)
+		return results, err
+	}
+	return results, errors.New("Result did not have a QueryResult field")
+}
+
+func (r *Client) paginatedGet(start, total float64, path string, body *QueryResult) (*QueryResult, error) {
 	if total != -1 && start > total {
 		return body, nil
 	}
@@ -73,22 +88,11 @@ func (r *Client) paginatedGet(start, total float64, path string, body map[string
 	if err != nil {
 		return body, err
 	}
-	if result, ok := GetMap("QueryResult", parse); ok {
-		if body == nil {
-			return r.paginatedGet(start+20, result["TotalResultCount"].(float64), path, parse)
-		} else if bResult, ok := GetMap("QueryResult", body); ok {
-			if results, ok := GetArray("Results", result); ok {
-				if bResults, ok := GetArray("Results", bResult); ok {
-					bResult["Results"] = append(bResults, results...)
-				}
-			}
-			return r.paginatedGet(start+20, bResult["TotalResultCount"].(float64), path, body)
-		} else {
-			return body, nil
-		}
-	} else if body == nil {
-		return parse, nil
-	} else {
-		return body, nil
+
+	if body == nil {
+		return r.paginatedGet(start+20, parse.TotalResultCount, path, parse)
+	} else if len(body.Results) > 0 {
+		body.Results = append(body.Results, parse.Results...)
 	}
+	return r.paginatedGet(start+20, parse.TotalResultCount, path, body)
 }
