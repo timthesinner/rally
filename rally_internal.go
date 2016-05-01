@@ -1,3 +1,6 @@
+//Package rally by TimTheSinner
+package rally
+
 /**
  * Copyright (c) 2016 TimTheSinner All Rights Reserved.
  *
@@ -13,7 +16,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package rally
 
 import (
 	"encoding/json"
@@ -22,11 +24,7 @@ import (
 	"strings"
 )
 
-func (r *RallyClient) paginatedGet(start, total float64, path string, body map[string]interface{}) (map[string]interface{}, error) {
-	if total != -1 && start > total {
-		return body, nil
-	}
-
+func (r *Client) get(start float64, path string) (map[string]interface{}, error) {
 	sep := "?"
 	if strings.Contains(path, "?") {
 		sep = "&"
@@ -42,93 +40,55 @@ func (r *RallyClient) paginatedGet(start, total float64, path string, body map[s
 		workspace = "&workspace=" + r.Workspace
 	}
 
+	if start < 1 {
+		start = 1
+	}
+
 	URI := r.Path(path + sep + fmt.Sprintf("start=%v&count=%v%v%v", start, 20, fetch, workspace))
-	fmt.Println("GET", URI)
-	if res, err := r.client.Get(URI); err != nil {
+	//fmt.Println("GET", URI)
+
+	res, err := r.client.Get(URI)
+	if err != nil {
+		return make(map[string]interface{}), err
+	}
+
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return make(map[string]interface{}), errors.New(res.Status)
+	}
+
+	var parse map[string]interface{}
+	if err := json.NewDecoder(res.Body).Decode(&parse); err != nil {
+		return make(map[string]interface{}), err
+	}
+	return parse, nil
+}
+
+func (r *Client) paginatedGet(start, total float64, path string, body map[string]interface{}) (map[string]interface{}, error) {
+	if total != -1 && start > total {
+		return body, nil
+	}
+
+	parse, err := r.get(start, path)
+	if err != nil {
 		return body, err
+	}
+	if result, ok := GetMap("QueryResult", parse); ok {
+		if body == nil {
+			return r.paginatedGet(start+20, result["TotalResultCount"].(float64), path, parse)
+		} else if bResult, ok := GetMap("QueryResult", body); ok {
+			if results, ok := GetArray("Results", result); ok {
+				if bResults, ok := GetArray("Results", bResult); ok {
+					bResult["Results"] = append(bResults, results...)
+				}
+			}
+			return r.paginatedGet(start+20, bResult["TotalResultCount"].(float64), path, body)
+		} else {
+			return body, nil
+		}
+	} else if body == nil {
+		return parse, nil
 	} else {
-		defer res.Body.Close()
-		if res.StatusCode != 200 {
-			return body, errors.New(res.Status)
-		}
-
-		return func(body map[string]interface{}) (map[string]interface{}, error) {
-			var parse map[string]interface{}
-			if err := json.NewDecoder(res.Body).Decode(&parse); err != nil {
-				return body, err
-			}
-
-			//Clean(parse)
-			//fmt.Println(PrettyJson(parse))
-			if result, ok := GetMap("QueryResult", parse); ok {
-				if body == nil {
-					return r.paginatedGet(start+20, result["TotalResultCount"].(float64), path, parse)
-				} else if bResult, ok := GetMap("QueryResult", body); ok {
-					if results, ok := GetArray("Results", result); ok {
-						if bResults, ok := GetArray("Results", bResult); ok {
-							bResult["Results"] = append(bResults, results...)
-						}
-					}
-					return r.paginatedGet(start+20, bResult["TotalResultCount"].(float64), path, body)
-				} else {
-					return body, nil
-				}
-			} else if body == nil {
-				return parse, nil
-			} else {
-				return body, nil
-			}
-		}(body)
-	}
-}
-
-func (r *RallyClient) processModel() {
-	r.AlwaysFetch = true
-	types := make(map[string]map[string]interface{})
-
-	if Subscription, err := r.paginatedGet(1, -1, "subscription", nil); err == nil {
-		if Subscription, ok := GetMap("Subscription", Subscription); ok {
-			types["Subscription"] = Subscription
-			if RevisionHistory, ok := GetMap("RevisionHistory", Subscription); ok {
-				r.processModelQuery(types, RevisionHistory["_ref"].(string))
-			}
-			if Workspaces, ok := GetMap("Workspaces", Subscription); ok {
-				r.processModelQuery(types, Workspaces["_ref"].(string))
-			}
-			r.processModelQuery(types, "portfolioitem/feature")
-		}
-	}
-
-	for k, _ := range types {
-		fmt.Println(k)
-	}
-
-	fmt.Println(types)
-}
-
-func (r *RallyClient) processModelQuery(types map[string]map[string]interface{}, url string) {
-	if raw, err := r.paginatedGet(1, -1, url, nil); err == nil {
-		if QueryResult, ok := GetMap("QueryResult", raw); ok {
-			if Results, ok := GetArray("Results", QueryResult); ok && len(Results) != 0 {
-				Result := Results[0].(map[string]interface{})
-				if Type, ok := Result["_type"]; ok {
-					types[Type.(string)] = Result
-				} else {
-					fmt.Println(PrettyJson(Result))
-				}
-
-				for k, v := range Result {
-					if obj, ok := v.(map[string]interface{}); ok {
-						if Type, ok := obj["_type"]; ok {
-							if _, ok := types[Type.(string)]; !ok {
-								r.processModelQuery(types, obj["_ref"].(string))
-							}
-						}
-					} else if _, ok := v.([]interface{}); ok {
-						fmt.Println(k)
-					}
-				}
-			}
-		}
+		return body, nil
 	}
 }

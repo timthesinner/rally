@@ -1,3 +1,6 @@
+//Package rally by TimTheSinner
+package rally
+
 /**
  * Copyright (c) 2016 TimTheSinner All Rights Reserved.
  *
@@ -13,7 +16,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package rally
 
 import (
 	"crypto/tls"
@@ -27,6 +29,7 @@ import (
 	"strings"
 )
 
+//GetMap Return a map for a key
 func GetMap(key string, m map[string]interface{}) (map[string]interface{}, bool) {
 	if m != nil {
 		if value, ok := m[key]; ok {
@@ -37,6 +40,7 @@ func GetMap(key string, m map[string]interface{}) (map[string]interface{}, bool)
 	return nil, false
 }
 
+//GetArray Return an array for a key
 func GetArray(key string, m map[string]interface{}) ([]interface{}, bool) {
 	if m != nil {
 		if value, ok := m[key]; ok {
@@ -47,12 +51,13 @@ func GetArray(key string, m map[string]interface{}) ([]interface{}, bool) {
 	return nil, false
 }
 
-func PrettyJson(obj interface{}) (string, error) {
-	if pretty, err := json.MarshalIndent(obj, "", "  "); err != nil {
+//PrettyJSON pretty print JSON
+func PrettyJSON(obj interface{}) (string, error) {
+	pretty, err := json.MarshalIndent(obj, "", "  ")
+	if err != nil {
 		return "", err
-	} else {
-		return string(pretty), nil
 	}
+	return string(pretty), nil
 }
 
 type mapping struct {
@@ -62,12 +67,18 @@ type mapping struct {
 
 var mappings = []mapping{
 	mapping{src: "_ref", targ: "URI"},
-	mapping{src: "_refObjectName", targ: "ObjectName"},
-	mapping{src: "_refObjectUUID", targ: "UUID"},
+	mapping{src: "_refObjectName", targ: "RefObjectName"},
+	mapping{src: "_rallyAPIMinor", targ: "APIMinor"},
+	mapping{src: "_rallyAPIMajor", targ: "APIMajor"},
+	mapping{src: "_refObjectUUID", targ: "RefObjectUUID"},
 	mapping{src: "_tagsNameArray", targ: "Names"},
-	mapping{src: "_type", targ: "Type"},
+	mapping{src: "_CreatedAt", targ: "CreatedAt"},
+	mapping{src: "_objectVersion", targ: "ObjectVersion"},
+	mapping{src: "_type", targ: "RefType"},
+	mapping{src: "VersionId", targ: "VersionID"},
 }
 
+//Clean strip out annoying tags
 func Clean(o interface{}) {
 	if m, ok := o.(map[string]interface{}); ok {
 		for _, mapper := range mappings {
@@ -92,33 +103,38 @@ func Clean(o interface{}) {
 	}
 }
 
-type RallyClient struct {
+//Client struct enabling authenticated access to Rally
+type Client struct {
 	jar           *cookiejar.Jar
 	client        *http.Client
 	Server        string
-	ApiVersion    string
+	APIVersion    string
 	SecurityToken string
 	Workspace     string
 	Workspaces    map[string]string
 	AlwaysFetch   bool
 }
 
-func (r *RallyClient) PaginatedGet(start float64, path string) (map[string]interface{}, error) {
+//PaginatedGet get all results
+func (r *Client) PaginatedGet(start float64, path string) (map[string]interface{}, error) {
 	return r.paginatedGet(start, -1, path, nil)
 }
 
-func (r *RallyClient) RawGet(raw string) (body map[string]interface{}, err error) {
+//RawGet run a custom query (any string)
+func (r *Client) RawGet(raw string) (body map[string]interface{}, err error) {
 	return r.PaginatedGet(1, raw)
 }
 
-func (r *RallyClient) Path(path string) string {
+//Path normalize a URI request, if the URI is missing https the client server and version are inserted
+func (r *Client) Path(path string) string {
 	if strings.HasPrefix(path, "https:") {
 		return path
 	}
-	return fmt.Sprintf("%s/slm/webservice/%s/%s", r.Server, r.ApiVersion, path)
+	return fmt.Sprintf("%s/slm/webservice/%s/%s", r.Server, r.APIVersion, path)
 }
 
-func (r *RallyClient) Login(username, password string) error {
+//Login user credentials are used to authenitcate with Rally, this is necessary only once.
+func (r *Client) Login(username, password string) error {
 	if username == "" {
 		username = os.Getenv("RALLY_USERNAME")
 	}
@@ -130,44 +146,49 @@ func (r *RallyClient) Login(username, password string) error {
 		}
 	}
 
-	if req, err := http.NewRequest("GET", r.Path("security/authorize"), nil); err != nil {
+	req, err := http.NewRequest("GET", r.Path("security/authorize"), nil)
+	if err != nil {
 		return err
-	} else {
-		req.SetBasicAuth(username, password)
-		if res, err := r.client.Do(req); err != nil {
-			return err
-		} else {
-			defer res.Body.Close()
-			if res.StatusCode != 200 {
-				return errors.New(res.Status)
-			}
-
-			var body map[string]interface{}
-			if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
-				return err
-			}
-
-			if result, ok := GetMap("OperationResult", body); ok {
-				if r.SecurityToken, ok = result["SecurityToken"].(string); !ok {
-					return errors.New("Could not find SecurityToken in result")
-				}
-			} else if rJson, err := PrettyJson(body); err != nil {
-				return err
-			} else {
-				return errors.New("Could not find security token in" + rJson)
-			}
-		}
 	}
 
-	return nil
+	req.SetBasicAuth(username, password)
+	res, err := r.client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return errors.New(res.Status)
+	}
+
+	var body map[string]interface{}
+	err = json.NewDecoder(res.Body).Decode(&body)
+	if err != nil {
+		return err
+	}
+
+	if result, ok := GetMap("OperationResult", body); ok {
+		if r.SecurityToken, ok = result["SecurityToken"].(string); !ok {
+			return errors.New("Could not find SecurityToken in result")
+		}
+		return nil
+	}
+
+	rJSON, err := PrettyJSON(body)
+	if err != nil {
+		return err
+	}
+	return errors.New("Could not find security token in" + rJSON)
 }
 
-func (r *RallyClient) InitWorkspaces() {
+//InitWorkspaces initialize all workspaces available to the user
+func (r *Client) InitWorkspaces() {
 	if raw, err := r.PaginatedGet(1, "subscription?fetch=true&query="); err == nil {
 		if QueryResult, ok := GetMap("QueryResult", raw); ok {
 			if Results, ok := GetArray("Results", QueryResult); ok && len(Results) == 1 {
-				if Workspaces, ok := GetMap("Workspaces", Results[0].(map[string]interface{})); ok {
-					if Workspaces, err := r.PaginatedGet(1, Workspaces["_ref"].(string)+"?fetch=true"); err == nil {
+				if rWorkspaces, ok := GetMap("Workspaces", Results[0].(map[string]interface{})); ok {
+					if Workspaces, err := r.PaginatedGet(1, rWorkspaces["_ref"].(string)+"?fetch=true"); err == nil {
 						if QueryResult, ok := GetMap("QueryResult", Workspaces); ok {
 							if Results, ok := GetArray("Results", QueryResult); ok && len(Results) != 0 {
 								r.Workspaces = make(map[string]string)
@@ -188,14 +209,15 @@ func (r *RallyClient) InitWorkspaces() {
 	}
 }
 
-func NewRally(username, password string) (*RallyClient, error) {
+//NewRally initialize a rally client
+func NewRally(username, password string) (*Client, error) {
 	var rallyJar, _ = cookiejar.New(nil)
 
-	client := &RallyClient{
+	client := &Client{
 		jar:        rallyJar,
 		client:     &http.Client{Jar: rallyJar, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: false}}},
 		Server:     "https://rally1.rallydev.com",
-		ApiVersion: "v2.0",
+		APIVersion: "v2.0",
 		Workspace:  os.Getenv("RALLY_WORKSPACE"),
 	}
 
@@ -205,4 +227,5 @@ func NewRally(username, password string) (*RallyClient, error) {
 	}
 
 	return client, err
+
 }
