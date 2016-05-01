@@ -18,6 +18,7 @@ package rally
  */
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -134,6 +135,30 @@ func (r *Client) Path(path string) string {
 	return fmt.Sprintf("%s/slm/webservice/%s/%s", r.Server, r.APIVersion, path)
 }
 
+//Features list a feature for query
+func (r *Client) Features(query string) (features []PortfolioItemFeature, err error) {
+	result, err := r.PaginatedGet(1, "portfolioitem/feature?fetch=true&query="+query)
+	if err != nil {
+		return features, err
+	}
+
+	for _, res := range result.Results {
+		var buff bytes.Buffer
+		json.NewEncoder(&buff).Encode(res)
+
+		var feature PortfolioItemFeature
+		if err := json.NewDecoder(&buff).Decode(&feature); err != nil {
+			fmt.Println(err)
+			fmt.Println(PrettyJSON(res))
+			return features, err
+		}
+
+		features = append(features, feature)
+	}
+
+	return features, nil
+}
+
 //Login user credentials are used to authenitcate with Rally, this is necessary only once.
 func (r *Client) Login(username, password string) error {
 	if username == "" {
@@ -186,16 +211,14 @@ func (r *Client) Login(username, password string) error {
 //InitWorkspaces initialize all workspaces available to the user
 func (r *Client) InitWorkspaces() {
 	if result, err := r.PaginatedGet(1, "subscription?fetch=true&query="); err == nil && len(result.Results) > 0 {
-		if rWorkspaces, ok := GetMap("Workspaces", result.Results[0].(map[string]interface{})); ok {
+		if rWorkspaces, ok := GetMap("Workspaces", result.Results[0]); ok {
 			if workspaces, err := r.PaginatedGet(1, rWorkspaces["_ref"].(string)+"?fetch=true"); err == nil && len(workspaces.Results) > 0 {
 				r.Workspaces = make(map[string]string)
 				for _, result := range workspaces.Results {
-					if result, ok := result.(map[string]interface{}); ok {
-						if r.Workspace == "" {
-							r.Workspace = result["_ref"].(string)
-						}
-						r.Workspaces[result["Name"].(string)] = result["_ref"].(string)
+					if r.Workspace == "" {
+						r.Workspace = result["_ref"].(string)
 					}
+					r.Workspaces[result["Name"].(string)] = result["_ref"].(string)
 				}
 			}
 		}

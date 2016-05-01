@@ -72,28 +72,27 @@ package rally
 
 //Base minimal Rally object type
 type Base struct {
- 	APIMajor         string                 ` + "`json:\"_rallyAPIMajor\"`" + `
- 	APIMinor         string                 ` + "`json:\"_rallyAPIMinor\"`" + `
+ 	APIMajor         string                 ` + "`json:\"_rallyAPIMajor,omitempty\"`" + `
+ 	APIMinor         string                 ` + "`json:\"_rallyAPIMinor,omitempty\"`" + `
  	URI              string                 ` + "`json:\"_ref\"`" + `
- 	RefObjectName    string                 ` + "`json:\"_refObjectName\"`" + `
- 	RefObjectUUID    string                 ` + "`json:\"_refObjectUUID\"`" + `
- 	RefType          string                 ` + "`json:\"_type\"`" + `
+ 	RefObjectName    string                 ` + "`json:\"_refObjectName,omitempty\"`" + `
+ 	RefObjectUUID    string                 ` + "`json:\"_refObjectUUID,omitempty\"`" + `
+ 	RefType          string                 ` + "`json:\"_type,omitempty\"`" + `
 }
 
 //QueryResult standard query result
 type QueryResult struct {
 	Errors           []interface{}
 	PageSize         float64
-	Results          []interface{}
+	Results          []map[string]interface{}
   StartIndex       float64
   TotalResultCount float64
   Warnings         []interface{}
- 	APIMajor         string                 ` + "`json:\"_rallyAPIMajor\"`" + `
- 	APIMinor         string                 ` + "`json:\"_rallyAPIMinor\"`" + `
+ 	APIMajor         string                 ` + "`json:\"_rallyAPIMajor,omitempty\"`" + `
+ 	APIMinor         string                 ` + "`json:\"_rallyAPIMinor,omitempty\"`" + `
 }`}
 
 	for _, k := range orderedType {
-		fmt.Println(k)
 		vp := types[k]
 		v := *vp
 		k = strings.Replace(k, "/", "", 1)
@@ -120,33 +119,21 @@ type QueryResult struct {
 
 			switch v := val.(type) {
 			case int, float64:
-				gType += fmt.Sprintf("  %v  float64  `json:\"%v\"`\n", gAttr, attr)
+				gType += fmt.Sprintf("  %v  float64  `json:\"%v,omitempty\"`\n", gAttr, attr)
 			case string:
-				gType += fmt.Sprintf("  %v  string  `json:\"%v\"`\n", gAttr, attr)
+				gType += fmt.Sprintf("  %v  string  `json:\"%v,omitempty\"`\n", gAttr, attr)
 			case []interface{}:
-				gType += fmt.Sprintf("  %v  []interface{}  `json:\"%v\"`\n", gAttr, attr)
+				gType += fmt.Sprintf("  %v  []interface{}  `json:\"%v,omitempty\"`\n", gAttr, attr)
 			case map[string]interface{}:
 				if Type, ok := v["_type"]; ok {
 					Type := strings.Replace(Type.(string), "/", "", 1)
-					isArray := false
-					if _, ok := v["Count"]; ok {
-						isArray = true
-					}
 
-					if (!isArray && k == Type) || (k == "Workspace" && Type == "WorkspaceConfiguration") || (k == "RevisionHistory" && Type == "Subscription") {
-						gType += fmt.Sprintf("  %v  Base  `json:\"%v\"`\n", gAttr, attr)
+					if _, ok := types[Type]; ok {
+						gType += fmt.Sprintf("  %v  *%v  `json:\"%v,omitempty\"`\n", gAttr, Type, attr)
 						break
-					} else {
-						if _, ok := types[Type]; ok {
-							if isArray {
-								Type = "[]" + Type
-							}
-							gType += fmt.Sprintf("  %v  %v  `json:\"%v\"`\n", gAttr, Type, attr)
-							break
-						}
 					}
 				}
-				gType += fmt.Sprintf("  %v  map[string]interface{}  `json:\"%v\"`\n", gAttr, attr)
+				gType += fmt.Sprintf("  %v  map[string]interface{}  `json:\"%v,omitempty\"`\n", gAttr, attr)
 			}
 		}
 		gType += "  CustomAttributes  map[string]interface{}  `json:\"CustomAttributes\"`\n"

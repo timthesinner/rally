@@ -23,14 +23,15 @@ import (
 	"testing"
 )
 
+var rally, ERROR = NewRally("", "")
+
 func TestRallyLogin(t *testing.T) {
 	fmt.Println("Starting test")
-	if rally, err := NewRally("", ""); err != nil {
-		t.Fatal(err)
+	if ERROR != nil {
+		t.Fatal(ERROR)
 	} else {
-		fmt.Println(rally)
 		rally.LogRequests = true
-		if features, err := rally.RawGet("portfolioitem/feature?fetch=true"); err != nil {
+		if features, err := rally.RawGet("portfolioitem/feature?fetch=true&query=(Name%20%3D%20test)"); err != nil {
 			t.Fatal(err)
 		} else {
 			fmt.Println(len(features.Results))
@@ -42,5 +43,14 @@ func TestRallyLogin(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestFeatures(t *testing.T) {
+	if ERROR != nil {
+		t.Fatal(ERROR)
+	} else {
+		features, _ := rally.Features("(FormattedID%20%3D%20Test)")
+		fmt.Println(PrettyJSON(features))
 	}
 }
