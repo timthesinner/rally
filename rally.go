@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -136,8 +137,8 @@ func (r *Client) Path(path string) string {
 }
 
 //Features list a feature for query
-func (r *Client) Features(query string) (features []PortfolioItemFeature, err error) {
-	result, err := r.PaginatedGet(1, "portfolioitem/feature?fetch=true&query="+query)
+func (r *Client) Features(query string) (features []*PortfolioItemFeature, err error) {
+	result, err := r.PaginatedGet(1, "portfolioitem/feature?fetch=true&query="+url.QueryEscape(query))
 	if err != nil {
 		return features, err
 	}
@@ -153,7 +154,17 @@ func (r *Client) Features(query string) (features []PortfolioItemFeature, err er
 			return features, err
 		}
 
-		features = append(features, feature)
+		if feature.CustomAttributes == nil {
+			feature.CustomAttributes = make(map[string]interface{})
+		}
+
+		for k, v := range res {
+			if strings.HasPrefix(k, "c_") {
+				feature.CustomAttributes[strings.Replace(k, "c_", "", 1)] = v
+			}
+		}
+
+		features = append(features, &feature)
 	}
 
 	return features, nil
